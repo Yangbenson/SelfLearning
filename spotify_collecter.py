@@ -10,19 +10,18 @@ import numpy as np
 import URL_scraper
 import pymysql
 import re
-from ML_function import filter
+from ML_function import strFilter
 
 total_songs = pd.DataFrame()
 
 username = 'Benson yang'
 scope = 'user-library-read'
-token = util.prompt_for_user_token(username,scope,
-                          client_id='d0ec07ad19d247f3b12aad4821097d5d',
-                          client_secret='e52c914739db43f7b0c00909c3dd7cc7',
-                          # 注意需要在自己的web app中添加redirect url
-                          redirect_uri='http://localhost:8888/callback')
+token = util.prompt_for_user_token(username, scope,
+                                   client_id='d0ec07ad19d247f3b12aad4821097d5d',
+                                   client_secret='e52c914739db43f7b0c00909c3dd7cc7',
+                                   # 注意需要在自己的web app中添加redirect url
+                                   redirect_uri='http://localhost:8888/callback')
 headers = {"Authorization": "Bearer {}".format(token), "Accept-Language": "en"}
-
 
 # responses = requests.get("https://api.spotify.com/v1/playlists/37i9dQZEVXbNG2KDcFcKOF", headers=headers)
 
@@ -33,59 +32,64 @@ headers = {"Authorization": "Bearer {}".format(token), "Accept-Language": "en"}
 # "https://open.spotify.com/genre/section0JQ5IMCbQBLimFASeYpIu3" Classic Blue
 # "https://open.spotify.com/genre/section0JQ5IMCbQBLjM0PD2WsCNe" Electronic
 # "https://open.spotify.com/genre/section0JQ5IMCbQBLuRvGbRRoxQW" R&B
+# "https://open.spotify.com/genre/section0JQ5IMCbQBLnjETREflcqJ" HH
 
 
-URLs = URL_scraper.Spotify_Genre_scraper("https://open.spotify.com/genre/section0JQ5IMCbQBLjM0PD2WsCNe")
+URLs = URL_scraper.Spotify_Genre_scraper("https://open.spotify.com/genre/section0JQ5IMCbQBLoSVpnseIhn6")
 for n, i in enumerate(URLs):
-    # track_id = "37i9dQZEVXbNG2KDcFcKOF"
-    responses = requests.get("https://api.spotify.com/v1/playlists/"+i, headers=headers)
+    responses = requests.get("https://api.spotify.com/v1/playlists/" + i, headers=headers)
     myjson_data = json.loads(responses.text)
-
 
     # song's attribute
     songs_attributes = []
     songs_analysis = []
 
-    #song'name
+    # song'name
     songs_names = []
     # classification
-    songs_CF = filter.filter_emoji(myjson_data.get('name'))
+    songs_CF = strFilter.filter_emoji(myjson_data.get('name', ""))
+
 
     def get_song_attributes(response_text):
         return json.loads(response_text)
 
-    #这边先放其中一个歌单的歌曲请求
+
+    # 这边先放其中一个歌单的歌曲请求
     for i in myjson_data.get('tracks')['items']:
-        song_ids = i['track']['uri'].split(':')[2]
-        # print(song_ids)
-        song_name = i['track']['name']
+        if i['track'] is not None and i['track']['uri'] is not None and len(i['track']['uri'].split(':')[2]) != 0:
+            song_ids = i['track']['uri'].split(':')[2]
+            # print(song_ids)
+            song_name = i['track']['name']
 
-        # song_analysis = requests.get(f"https://api.spotify.com/v1/audio-analysis/{song_ids}", headers=headers)
-        # songs_analysis.append(get_song_attributes(song_analysis.text))
+            # song_analysis = requests.get(f"https://api.spotify.com/v1/audio-analysis/{song_ids}", headers=headers)
+            # songs_analysis.append(get_song_attributes(song_analysis.text))
 
-        song_attributes = requests.get(f"https://api.spotify.com/v1/audio-features/{song_ids}", headers=headers)
-        songs_attributes.append(get_song_attributes(song_attributes.text))
-        songs_names.append(song_name)
-
+            song_attributes = requests.get(f"https://api.spotify.com/v1/audio-features/{song_ids}", headers=headers)
+            songs_attributes.append(get_song_attributes(song_attributes.text))
+            songs_names.append(song_name)
+        else:
+            continue
 
     # add name to song attributes
     songs = pd.DataFrame(songs_attributes)
     songs['song_name'] = songs_names
 
-    #label owner name to dataframe
+    # label owner name to dataframe
     songs['Classification'] = songs_CF
 
-
     # all in one
-    total_songs = pd.concat([total_songs,songs]).reset_index(drop=True)
-    print(n,'times')
+    total_songs = pd.concat([total_songs, songs]).reset_index(drop=True)
+    print(n, 'times')
 
-    if n == 50:
+    if n == 10:
         break
 
+print(total_songs.columns)
+print(total_songs["mode"].describe())
+print(total_songs)
 
 # insert to database ------------------------------------------------
-def SQL(table,db, kind, df_insert=""):
+def SQL(table, db, kind, df_insert=""):
     now = datetime.datetime.now()
     date_time_str = now.strftime("%Y-%m-%d")
 
@@ -102,11 +106,10 @@ def SQL(table,db, kind, df_insert=""):
 
         if kind == "create":
             with conn.cursor() as cursor:
-
-                cursor.execute("DROP TABLE IF EXISTS "'`' + str(date_time_str) + '_' + table+'`')
+                cursor.execute("DROP TABLE IF EXISTS "'`' + str(date_time_str) + '_' + table + '`')
 
                 cursor.execute(
-                    'CREATE TABLE ' + '`' + str(date_time_str) + '_'+table+'`(' +
+                    'CREATE TABLE ' + '`' + str(date_time_str) + '_' + table + '`(' +
                     '`id` INT NOT NULL AUTO_INCREMENT,' +
                     '`acousticness` FlOAT NOT NULL,' +
                     '`danceability` FlOAT NOT NULL,' +
@@ -133,7 +136,7 @@ def SQL(table,db, kind, df_insert=""):
                 values.append(tuple(df.iloc[i, :]))
 
             head = 'INSERT INTO ' + db + ".`" + str(
-                date_time_str) + "_"+table + """` (acousticness,danceability,energy,instrumentalness,loudness,speechiness,tempo,valence,`key`,duration_ms,Classification,song_name) """ \
+                date_time_str) + "_" + table + """` (acousticness,danceability,energy,instrumentalness,loudness,speechiness,tempo,valence,`key`,duration_ms,Classification,song_name) """ \
                    + """VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
             print('-------------print query--------------')
@@ -154,38 +157,35 @@ def SQL(table,db, kind, df_insert=""):
         raise (err)
 
 
-
-#get attributes we need
-data = total_songs[[ 'acousticness','danceability','energy','instrumentalness',
-                    'loudness','speechiness','tempo',
-                    'valence','key','duration_ms','Classification','song_name'
-                   ]]
+# get attributes we need
+data = total_songs[['acousticness', 'danceability', 'energy', 'instrumentalness',
+                    'loudness', 'speechiness', 'tempo',
+                    'valence', 'key', 'duration_ms', 'Classification', 'song_name'
+                    ]]
 
 data.to_csv(
-        'report.csv', # 檔案名稱
-        encoding = 'utf-8-sig', # 編碼
-        index=True # 是否保留index
-        )
+    'report.csv',  # 檔案名稱
+    encoding='utf-8-sig',  # 編碼
+    index=True  # 是否保留index
+)
 
 # import to database
-SQL("Blues","spotify", "create")
-SQL("Blues","spotify", "insert",data)
-
+SQL("Electronic", "spotify", "create")
+SQL("Electronic", "spotify", "insert", data)
 
 # normalization时我们需要ignore 文本数据，比如 歌曲名和 Owner
 data_num = data.select_dtypes(include=[np.number])
 data_norm = (data_num - data_num.mean()) / (data_num.max() - data_num.min())
-data_norm[['Classification','song_name']]  = data[['Classification','song_name']]
+data_norm[['Classification', 'song_name']] = data[['Classification', 'song_name']]
 
-SQL("Blues_norm","spotify", "create")
-SQL("Blues_norm","spotify", "insert",data_norm)
+# SQL("Blues_norm","spotify", "create")
+# SQL("Blues_norm","spotify", "insert",data_norm)
 
 data_norm.to_csv(
-        'report.csv', # 檔案名稱
-        encoding = 'utf-8-sig', # 編碼
-        index=True # 是否保留index
-        )
-
+    'report.csv',  # 檔案名稱
+    encoding='utf-8-sig',  # 編碼
+    index=True  # 是否保留index
+)
 
 # chart----------------------------------------------------------------------------------------
 
@@ -218,10 +218,7 @@ data_norm.to_csv(
 # plt.show()
 
 
-
-
-
-#对比
+# 对比
 # f, axes = plt.subplots(2, 4, figsize=(20, 8), sharex=False)
 # for pos, color, column in zip(subplot_position, colorplate, data_norm.columns[:-2]):
 #     sns.distplot(data_norm.loc[data_norm.Owner=='Anwar'][column],
